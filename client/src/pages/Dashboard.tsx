@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/apiRequest';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { User, Inbox, Users, Phone, FileText, Calendar, Building2, Shield } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { UserType } from '@/types';
+import { AxiosError } from 'axios';
 
 type InquiryType = {
   id: string;
@@ -45,34 +46,60 @@ const Dashboard = () => {
   const [, setLocation] = useLocation();
   const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('overview');
+  const queryClient = useQueryClient();
   
   // Memoize query options to prevent unnecessary refetches
   const queryOptions = useMemo(() => ({
-    queryKey: ['/api/dashboard/inquiries'] as const,
+    queryKey: ['/api/contact'],
     queryFn: async (): Promise<InquiriesResponse> => {
       try {
-        const response = await apiRequest.get<InquiriesResponse>('/dashboard/inquiries');
-        if (!response.data) {
-          throw new Error('No data received from server');
+        const response = await apiRequest.get<{ success: boolean; data: InquiryType[] }>('/contact');
+        if (!response.data || !response.data.success) {
+          throw new Error('Failed to fetch inquiries');
         }
-        return response.data;
-      } catch (error) {
+        return { success: true, data: response.data.data };
+      } catch (error: any) {
+        console.error('Error fetching inquiries:', error);
+        if (error?.response?.status === 401) {
+          // If unauthorized, try to refresh token
+          try {
+            await apiRequest.post('/auth/refresh-token');
+            // Retry the request after token refresh
+            const retryResponse = await apiRequest.get<{ success: boolean; data: InquiryType[] }>('/contact');
+            if (retryResponse.data?.success) {
+              return { success: true, data: retryResponse.data.data };
+            }
+          } catch (refreshError) {
+            console.error('Token refresh failed:', refreshError);
+            // If refresh fails, redirect to login
+            setLocation('/login');
+          }
+        }
         throw error;
       }
     },
-    enabled: !!user && !authLoading, // Only enable when we have a user and not loading
+    enabled: !!user && !authLoading,
     staleTime: 5 * 60 * 1000, // 5 minutes
-  }), [user, authLoading]);
+    retry: 1,
+    retryDelay: 1000,
+  }), [user, authLoading, setLocation]);
 
   // Fetch dashboard data
-  const { data: inquiriesData, isLoading: isLoadingInquiries } = useQuery(queryOptions);
+  const { 
+    data: inquiriesData, 
+    isLoading: isLoadingInquiries,
+    error: inquiriesError 
+  } = useQuery({
+    ...queryOptions,
+    refetchOnWindowFocus: false // Prevent refetching when window regains focus
+  });
   
   // Process inquiries data
   const inquiries = useMemo<InquiryType[]>(() => {
     if (!inquiriesData?.success || !inquiriesData?.data) {
       return [];
     }
-    return inquiriesData.data;
+    return Array.isArray(inquiriesData.data) ? inquiriesData.data : [];
   }, [inquiriesData]);
 
   // Calculate stats
@@ -133,6 +160,74 @@ const Dashboard = () => {
     return null; // Will redirect to login
   }
 
+  if (inquiriesError) {
+    console.error('Dashboard error details:', inquiriesError);
+    return (
+      <div className="p-4 space-y-4">
+        <div className="text-red-600 p-4 bg-red-50 rounded-lg">
+          <h3 className="font-bold text-lg mb-2">Error loading dashboard data</h3>
+          <p className="mb-4">
+            {inquiriesError.message || 'Please try again later.'}
+          </p>
+          <div className="text-sm text-red-700 bg-red-100 p-3 rounded">
+            <p>Debug info:</p>
+            <pre className="whitespace-pre-wrap mt-2 text-xs">
+              {JSON.stringify(
+                {
+                  status: inquiriesError instanceof AxiosError ? inquiriesError.response?.status : undefined,
+                  data: inquiriesError instanceof AxiosError ? inquiriesError.response?.data : undefined,
+                  message: inquiriesError.message,
+                },
+                null,
+                2
+              )}
+            </pre>
+          </div>
+        </div>
+        <Button 
+          onClick={() => queryClient.refetchQueries({ queryKey: ['/api/contact'] })}
+          className="mt-4"
+        >
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (isLoadingInquiries) {
+    return <div className="p-4">Loading dashboard data...</div>;
+  }
+
+  const renderInquiries = () => {
+    if (!inquiries || inquiries.length === 0) {
+      return <div>No inquiries found.</div>;
+    }
+
+    return (
+      <div className="space-y-4">
+        {inquiries.map((inquiry) => (
+          <div 
+            key={`inquiry-${inquiry.id}`} // Ensure unique key
+            className="border p-4 rounded-lg"
+          >
+            <div className="flex justify-between">
+              <h3 className="font-medium">{inquiry.name}</h3>
+              <span className="text-sm text-gray-500">
+                {new Date(inquiry.createdAt).toLocaleDateString()}
+              </span>
+            </div>
+            <p className="text-gray-600 mt-2">{inquiry.message}</p>
+            {inquiry.service && (
+              <Badge variant="outline" className="mt-2">
+                {inquiry.service}
+              </Badge>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="container mx-auto px-4 py-12">
       {/* User Profile Section */}
@@ -176,282 +271,221 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {isLoadingInquiries ? (
-          <div>Loading inquiries...</div>
-        ) : (
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
-            <TabsList>
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              {/* Only show Inquiries tab for admins */}
-              {isAdmin && (
-                <>
-                  <TabsTrigger value="inquiries">Inquiries</TabsTrigger>
-                  <TabsTrigger value="users">Users</TabsTrigger>
-                </>
-              )}
-            </TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            {/* Only show Inquiries tab for admins */}
+            {isAdmin && (
+              <>
+                <TabsTrigger value="inquiries">Inquiries</TabsTrigger>
+                <TabsTrigger value="users">Users</TabsTrigger>
+              </>
+            )}
+          </TabsList>
 
-            {/* Overview Tab */}
-            <TabsContent value="overview" className="space-y-8">
-              {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {isAdmin && (
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium">Total Inquiries</CardTitle>
-                      <Inbox className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{stats.totalInquiries}</div>
-                      <p className="text-xs text-muted-foreground">
-                        From contact form submissions
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
-                
-                {isAdmin && (
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium">Registered Users</CardTitle>
-                      <Users className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">
-                        {isLoadingUsers ? '...' : users.length}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Active accounts on platform
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
-                
-                {isAdmin && (
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium">Most Popular Service</CardTitle>
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold capitalize">
-                        {Object.entries(stats.serviceStats).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A'}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Based on inquiry submissions
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
-                
+          {/* Overview Tab */}
+          <TabsContent value="overview" className="space-y-8">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {isAdmin && (
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">Current Date</CardTitle>
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <CardTitle className="text-sm font-medium">Total Inquiries</CardTitle>
+                    <Inbox className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
-                      {new Date().toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric'
-                      })}
-                    </div>
+                    <div className="text-2xl font-bold">{stats.totalInquiries}</div>
                     <p className="text-xs text-muted-foreground">
-                      {new Date().toLocaleDateString('en-US', { weekday: 'long' })}
+                      From contact form submissions
                     </p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Recent Inquiries - Only visible to admins */}
-              {isAdmin && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Recent Inquiries</CardTitle>
-                    <CardDescription>
-                      The latest inquiries from potential customers
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {isLoadingInquiries ? (
-                      <div className="text-center py-4">Loading recent inquiries...</div>
-                    ) : stats.recentInquiries.length > 0 ? (
-                      <div className="space-y-6">
-                        {stats.recentInquiries.map((inquiry) => (
-                          <div key={inquiry.id} className="flex flex-col space-y-2 border-b pb-4 last:border-0">
-                            <div className="flex justify-between">
-                              <div className="font-semibold flex items-center gap-2">
-                                <User className="h-4 w-4" />
-                                {inquiry.name}
-                              </div>
-                              <Badge variant="outline" className="capitalize">
-                                {inquiry.service || 'General'}
-                              </Badge>
-                            </div>
-                            <div className="flex gap-4 text-sm text-muted-foreground">
-                              <div className="flex items-center gap-1">
-                                <FileText className="h-3 w-3" />
-                                {inquiry.email}
-                              </div>
-                              {inquiry.phone && (
-                                <div className="flex items-center gap-1">
-                                  <Phone className="h-3 w-3" />
-                                  {inquiry.phone}
-                                </div>
-                              )}
-                            </div>
-                            <p className="text-sm line-clamp-2">{inquiry.message}</p>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-4">No recent inquiries found</div>
-                    )}
                   </CardContent>
                 </Card>
               )}
               
-              {/* Regular user welcome card */}
-              {!isAdmin && (
+              {isAdmin && (
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Welcome to Your Dashboard</CardTitle>
-                    <CardDescription>
-                      Manage your Cowolocation account
-                    </CardDescription>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium">Registered Users</CardTitle>
+                    <Users className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      <p>Welcome to your personal dashboard. From here, you can:</p>
-                      <ul className="list-disc pl-5 space-y-2">
-                        <li>View and update your account information</li>
-                        <li>Check your workspace services</li>
-                        <li>Get customer support</li>
-                      </ul>
-                      <p className="text-sm text-muted-foreground mt-4">
-                        Need help? Contact our support team for assistance.
-                      </p>
+                    <div className="text-2xl font-bold">
+                      {isLoadingUsers ? '...' : users.length}
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Active accounts on platform
+                    </p>
                   </CardContent>
                 </Card>
               )}
+              
+              {isAdmin && (
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium">Most Popular Service</CardTitle>
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold capitalize">
+                      {Object.entries(stats.serviceStats).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A'}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Based on inquiry submissions
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+              
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Current Date</CardTitle>
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {new Date().toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric'
+                    })}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date().toLocaleDateString('en-US', { weekday: 'long' })}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Recent Inquiries - Only visible to admins */}
+            {isAdmin && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Inquiries</CardTitle>
+                  <CardDescription>
+                    The latest inquiries from potential customers
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingInquiries ? (
+                    <div className="text-center py-4">Loading recent inquiries...</div>
+                  ) : stats.recentInquiries.length > 0 ? (
+                    renderInquiries()
+                  ) : (
+                    <div className="text-center py-4">No recent inquiries found</div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Regular user welcome card */}
+            {!isAdmin && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Welcome to Your Dashboard</CardTitle>
+                  <CardDescription>
+                    Manage your Cowolocation account
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <p>Welcome to your personal dashboard. From here, you can:</p>
+                    <ul className="list-disc pl-5 space-y-2">
+                      <li>View and update your account information</li>
+                      <li>Check your workspace services</li>
+                      <li>Get customer support</li>
+                    </ul>
+                    <p className="text-sm text-muted-foreground mt-4">
+                      Need help? Contact our support team for assistance.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* Inquiries Tab - Only visible to admins */}
+          {isAdmin && (
+            <TabsContent value="inquiries" className="space-y-8">
+              <Card>
+                <CardHeader>
+                  <CardTitle>All Inquiries</CardTitle>
+                  <CardDescription>
+                    Complete list of customer inquiries submitted through the contact form
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingInquiries ? (
+                    <div className="text-center py-4">Loading inquiries...</div>
+                  ) : inquiries.length > 0 ? (
+                    renderInquiries()
+                  ) : (
+                    <div className="text-center py-4">No inquiries found</div>
+                  )}
+                </CardContent>
+              </Card>
             </TabsContent>
+          )}
 
-            {/* Inquiries Tab - Only visible to admins */}
-            {isAdmin && (
-              <TabsContent value="inquiries" className="space-y-8">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>All Inquiries</CardTitle>
-                    <CardDescription>
-                      Complete list of customer inquiries submitted through the contact form
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {isLoadingInquiries ? (
-                      <div className="text-center py-4">Loading inquiries...</div>
-                    ) : inquiries.length > 0 ? (
-                      <div className="space-y-6">
-                        {inquiries.map((inquiry) => (
-                          <div key={inquiry.id} className="flex flex-col space-y-3 border-b pb-4 last:border-0">
-                            <div className="flex justify-between">
-                              <div className="font-semibold flex items-center gap-2">
-                                <User className="h-4 w-4" />
-                                {inquiry.name}
-                              </div>
-                              <Badge variant="outline" className="capitalize">
-                                {inquiry.service || 'General'}
-                              </Badge>
-                            </div>
-                            <div className="flex gap-4 text-sm text-muted-foreground">
-                              <div className="flex items-center gap-1">
-                                <FileText className="h-3 w-3" />
-                                {inquiry.email}
-                              </div>
-                              {inquiry.phone && (
-                                <div className="flex items-center gap-1">
-                                  <Phone className="h-3 w-3" />
-                                  {inquiry.phone}
-                                </div>
-                              )}
-                            </div>
-                            <p className="text-sm">{inquiry.message}</p>
-                            <div className="text-xs text-muted-foreground">
-                              {inquiry.subscribe ? 'Subscribed to newsletter' : 'Not subscribed to newsletter'}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-4">No inquiries found</div>
-                    )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            )}
-
-            {/* Users Tab */}
-            {isAdmin && (
-              <TabsContent value="users" className="space-y-8">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>User Management</CardTitle>
-                    <CardDescription>Manage all registered users</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {isLoadingUsers ? (
-                      <div className="text-center py-4">Loading users...</div>
-                    ) : usersError ? (
-                      <div className="text-center py-4 text-red-500">
-                        Error loading users. Please try again later.
-                      </div>
-                    ) : users.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+          {/* Users Tab */}
+          {isAdmin && (
+            <TabsContent value="users" className="space-y-8">
+              <Card>
+                <CardHeader>
+                  <CardTitle>User Management</CardTitle>
+                  <CardDescription>Manage all registered users</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingUsers ? (
+                    <div className="text-center py-4">Loading users...</div>
+                  ) : usersError ? (
+                    <div className="text-center py-4 text-red-500">
+                      Error loading users. Please try again later.
+                    </div>
+                  ) : users.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {users.map((user) => (
+                            <tr key={`user-${user.id}`} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                {user.firstName} {user.lastName}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {user.email}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {user.company || '-'}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                  user.role === 'admin' 
+                                    ? 'bg-purple-100 text-purple-800' 
+                                    : 'bg-green-100 text-green-800'
+                                }`}>
+                                  {user.role}
+                                </span>
+                              </td>
                             </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {users.map((user) => (
-                              <tr key={`user-${user.id}`} className="hover:bg-gray-50">
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                  {user.firstName} {user.lastName}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                  {user.email}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                  {user.company || '-'}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                    user.role === 'admin' 
-                                      ? 'bg-purple-100 text-purple-800' 
-                                      : 'bg-green-100 text-green-800'
-                                  }`}>
-                                    {user.role}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <div className="text-center py-4">No users found</div>
-                    )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            )}
-          </Tabs>
-        )}
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4">No users found</div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+        </Tabs>
       </div>
     </div>
   );

@@ -1,8 +1,27 @@
 import express from 'express';
-import { Contact } from '../db/models/contact';
+import { Contact } from '../db/models/contact.js';
 import { validateContactForm } from '../middleware/validation';
+import { authenticateToken } from '../middleware/auth';
 
 const router = express.Router();
+
+// GET /api/contact - Get all inquiries (protected route)
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    const inquiries = await Contact.find().sort({ createdAt: -1 });
+    res.status(200).json({
+      success: true,
+      data: inquiries
+    });
+  } catch (error) {
+    console.error('Error fetching inquiries:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch inquiries',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
 
 // POST /api/contact - Handle contact form submissions
 router.post('/', validateContactForm, async (req, res) => {

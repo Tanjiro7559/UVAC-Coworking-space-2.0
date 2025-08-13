@@ -8,6 +8,7 @@ import authRoutes from './routes/auth';
 import servicesRoutes from './routes/services';
 import bookingsRoutes from './routes/bookings';
 import usersRoutes from './routes/users';
+import contactRoutes from './routes/contact';
 import { authenticateToken } from './middleware/auth';
 import { connectDB } from './db';
 import { registerRoutes } from './routes';
@@ -135,10 +136,11 @@ app.get('/api/test', (req, res) => {
 console.log('Registering auth routes at /api/auth');
 app.use('/api/auth', authRoutes);
 
-// Register additional routes first (before services and bookings)
+// Register additional routes
 app.use('/api/services', servicesRoutes);
 app.use('/api/bookings', bookingsRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/contact', contactRoutes);
 
 // Debug: Log all registered routes
 const printRoutes = (router: any, prefix = '') => {
