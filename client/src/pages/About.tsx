@@ -100,53 +100,29 @@ const About = () => {
             </p>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="text-center">
-              <div className="w-40 h-40 bg-neutral-200 rounded-full mx-auto mb-4 overflow-hidden">
-                <img 
-                  src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=300&q=80" 
-                  alt="CEO portrait" 
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-40 h-40 bg-neutral-100 rounded-full mx-auto mb-4 flex items-center justify-center border-2 border-dashed border-neutral-300">
+                <span className="text-neutral-500 text-sm text-center px-2">Photo Coming Soon</span>
               </div>
-              <h3 className="text-xl font-semibold">Anand Chavan</h3>
-              <p className="text-primary font-medium">CEO & Founder</p>
+              <h3 className="text-xl font-semibold">Vijaylakshmi Mandalapu</h3>
+              <p className="text-primary font-medium">Managing Director</p>
             </div>
             
             <div className="text-center">
-              <div className="w-40 h-40 bg-neutral-200 rounded-full mx-auto mb-4 overflow-hidden">
-                <img 
-                  src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=300&q=80" 
-                  alt="COO portrait" 
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-40 h-40 bg-neutral-100 rounded-full mx-auto mb-4 flex items-center justify-center border-2 border-dashed border-neutral-300">
+                <span className="text-neutral-500 text-sm text-center px-2">Photo Coming Soon</span>
               </div>
-              <h3 className="text-xl font-semibold">Sarah Johnson</h3>
-              <p className="text-primary font-medium">Chief Operations Officer</p>
+              <h3 className="text-xl font-semibold">Sreehita Manne</h3>
+              <p className="text-primary font-medium">Executive Director</p>
             </div>
             
             <div className="text-center">
-              <div className="w-40 h-40 bg-neutral-200 rounded-full mx-auto mb-4 overflow-hidden">
-                <img 
-                  src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=300&q=80" 
-                  alt="CFO portrait" 
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-40 h-40 bg-neutral-100 rounded-full mx-auto mb-4 flex items-center justify-center border-2 border-dashed border-neutral-300">
+                <span className="text-neutral-500 text-sm text-center px-2">Photo Coming Soon</span>
               </div>
-              <h3 className="text-xl font-semibold">Anand Chavan</h3>
-              <p className="text-primary font-medium">Chief Financial Officer</p>
-            </div>
-            
-            <div className="text-center">
-              <div className="w-40 h-40 bg-neutral-200 rounded-full mx-auto mb-4 overflow-hidden">
-                <img 
-                  src="https://images.unsplash.com/photo-1580489944761-15a19d654956?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&h=300&q=80" 
-                  alt="CXO portrait" 
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <h3 className="text-xl font-semibold">Amelia Rodriguez</h3>
-              <p className="text-primary font-medium">Chief Experience Officer</p>
+              <h3 className="text-xl font-semibold">Praveen</h3>
+              <p className="text-primary font-medium">Director</p>
             </div>
           </div>
         </div>
