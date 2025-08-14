@@ -55,10 +55,12 @@ const startServer = async () => {
   try {
     await connectDB();
     
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
-      console.log(`📊 Health check: http://localhost:${PORT}/health`);
-    });
+    if (process.env.NODE_ENV !== 'production') {
+      app.listen(PORT, () => {
+        console.log(`🚀 Server running on http://localhost:${PORT}`);
+        console.log(`📊 Health check: http://localhost:${PORT}/health`);
+      });
+    }
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);
@@ -79,5 +81,10 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-// Start the server
-startServer();
+// Only start the server if this file is run directly (not when imported as a module)
+if (process.env.NODE_ENV !== 'test') {
+  startServer();
+}
+
+// Export the Express API for Vercel
+export default app;
