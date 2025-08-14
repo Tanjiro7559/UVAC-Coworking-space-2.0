@@ -19,24 +19,14 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-    define: {
-      'process.env': { ...process.env, ...env },
-    },
-    base: isProduction ? '/' : '/',
     build: {
       outDir: 'dist',
-      assetsDir: 'assets',
       emptyOutDir: true,
       sourcemap: !isProduction,
-      minify: isProduction ? 'esbuild' : false,
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            react: ['react', 'react-dom', 'react-router-dom'],
-            vendor: ['axios', 'react-query'],
-          },
-        },
-      },
     },
+    define: {
+      'process.env': {}
+    },
+    base: './', 
   };
 });

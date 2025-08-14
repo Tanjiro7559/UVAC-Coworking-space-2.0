@@ -82,9 +82,12 @@ process.on('uncaughtException', (err) => {
 });
 
 // Only start the server if this file is run directly (not when imported as a module)
-if (process.env.NODE_ENV !== 'test') {
+if (require.main === module || process.env.NODE_ENV === 'development') {
   startServer();
 }
 
 // Export the Express API for Vercel
 export default app;
+
+// For CommonJS compatibility
+module.exports = app;

@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "server/index.ts",
+      "src": "api/index.ts",
       "use": "@vercel/node"
     },
     {
@@ -16,17 +16,11 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/server"
+      "dest": "/api"
     },
     {
       "src": "/(.*)",
-      "dest": "/client",
-      "continue": true
+      "dest": "/client/$1"
     }
-  ],
-  "env": {
-    "NODE_ENV": "production"
-  },
-  "buildCommand": "npm install && npm run build",
-  "outputDirectory": "client/dist"
+  ]
 }
