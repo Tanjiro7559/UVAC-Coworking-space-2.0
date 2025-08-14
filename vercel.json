@@ -1,16 +1,32 @@
 {
   "version": 2,
-  "buildCommand": "node vercel-build.js",
-  "outputDirectory": ".vercel/output",
-  "regions": ["sin1"],
+  "builds": [
+    {
+      "src": "server/index.ts",
+      "use": "@vercel/node",
+      "config": {
+        "maxLambdaSize": "15mb"
+      }
+    },
+    {
+      "src": "client/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist",
+        "env": {
+          "VITE_API_URL": "/api"
+        }
+      }
+    }
+  ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/api"
+      "dest": "/server/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "/static/$1"
+      "dest": "/client/dist/$1"
     }
   ]
 }
