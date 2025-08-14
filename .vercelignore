@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+.next/
+.nuxt/
+dist/
+build/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local development
+.DS_Store
+*.pem
+
+# Editor directories and files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Test files
+__tests__/
+*.test.js
+*.spec.js
+
+# Server files
+server/
+!server/dist/
+
+# Client build files
+client/dist/
+
+# Other
+.cache/
+.temp/
+.tmp/
+.vercel/
