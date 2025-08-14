@@ -2,12 +2,19 @@
   command = "npm run build"
   publish = "dist/public"
 
+# Handle API requests - forward to your backend server
 [[redirects]]
   from = "/api/*"
-  to = "https://your-backend-server.com/api/:splat"  # Replace with your actual backend URL
+  to = "https://lckzbbnydwdtdbwplnvh.supabase.co/rest/v1/:splat"
   status = 200
   force = true
+  headers = { 
+    Access-Control-Allow-Origin = "https://enchanting-meerkat-55dfae.netlify.app"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
+  }
 
+# SPA fallback
 [[redirects]]
   from = "/*"
   to = "/index.html"
